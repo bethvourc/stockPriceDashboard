@@ -26,31 +26,43 @@ def process_data(data):
     return data
 
 def calculate_metric(data):
-    last_close = data['Close'].iloc[-1]
-    prev_close = data['Close'].iloc[0]
-    change = last_close - prev_close
-    pct_change = (change / prev_close) * 100
-    high = data['High'].max()
-    low = data['Low'].min()
-    volume = data['Volume'].sum()
-    avg_volume = data['Volume'].mean()
-    return last_close, change, pct_change, high, low, volume, avg_volume
+    try:
+        # Convert all values to float to ensure proper calculation
+        last_close = float(data['Close'].iloc[-1])
+        prev_close = float(data['Close'].iloc[0])
+        change = last_close - prev_close
+        pct_change = (change / prev_close) * 100
+        high = float(data['High'].max())
+        low = float(data['Low'].min())
+        volume = float(data['Volume'].sum())
+        avg_volume = float(data['Volume'].mean())
+        
+        # Return all values as native Python numbers, not Pandas/Numpy types
+        return last_close, change, pct_change, high, low, volume, avg_volume
+    except Exception as e:
+        st.error(f"Error in calculate_metric: {str(e)}")
+        # Return default values in case of error
+        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
 def add_technical_indicators(data):
-    data['Close'] = data['Close'].ffill()  # Changed from fillna(method='ffill')
+    # Ensure Close price is a 1D series by squeezing any extra dimensions
+    close_series = data['Close'].squeeze()
+    close_series = close_series.ffill()
     
     # Moving averages
-    data['SMA_20'] = ta.trend.sma_indicator(data['Close'], window=20)
-    data['EMA_20'] = ta.trend.ema_indicator(data['Close'], window=20)
+    data['SMA_20'] = ta.trend.sma_indicator(close_series, window=20)
+    data['EMA_20'] = ta.trend.ema_indicator(close_series, window=20)
     
-    # Rest of the function remains the same
-    data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
+    # RSI
+    data['RSI'] = ta.momentum.rsi(close_series, window=14)
     
-    macd = ta.trend.MACD(data['Close'])
+    # MACD
+    macd = ta.trend.MACD(close_series)
     data['MACD'] = macd.macd()
     data['MACD_Signal'] = macd.macd_signal()
     
-    bb = ta.volatility.BollingerBands(data['Close'])
+    # Bollinger Bands
+    bb = ta.volatility.BollingerBands(close_series)
     data['BB_Upper'] = bb.bollinger_hband()
     data['BB_Lower'] = bb.bollinger_lband()
     data['BB_Middle'] = bb.bollinger_mavg()
@@ -103,12 +115,20 @@ if st.sidebar.button('Update'):
 
             # Display main metrics in two rows
             col1, col2, col3 = st.columns(3)
-            col1.metric(label=f"{ticker} Last Price", 
-                       value=f"{last_close:.2f} USD", 
-                       delta=f"{change:.2f} ({pct_change:.2f}%)")
-            col2.metric("Day's Range", f"{low:.2f} - {high:.2f} USD")
-            col3.metric("Volume", f"{volume:,.0f}", 
-                       delta=f"{((volume/avg_volume)-1)*100:.1f}% vs avg")
+            col1.metric(
+                label=f"{ticker} Last Price", 
+                value=f"{last_close:,.2f} USD", 
+                delta=f"{change:,.2f} ({pct_change:.2f}%)"
+            )
+            col2.metric(
+                "Day's Range", 
+                f"{low:,.2f} - {high:,.2f} USD"
+            )
+            col3.metric(
+                "Volume", 
+                f"{int(volume):,}", 
+                delta=f"{((volume/avg_volume)-1)*100:.1f}% vs avg"
+            )
 
             # Create tabs for different charts
             tab1, tab2, tab3 = st.tabs(["Price Chart", "Technical Analysis", "Volume"])
@@ -123,39 +143,77 @@ if st.sidebar.button('Update'):
                         high=data['High'],
                         low=data['Low'],
                         close=data['Close'],
-                        name='Price'
+                        name='Price',
+                        increasing_line_color='#26A69A',    # Green color for increasing
+                        decreasing_line_color='#EF5350',    # Red color for decreasing
+                        line=dict(width=1)                  # Make candlesticks more visible
                     ))
-                else:
+                elif chart_type == 'Line':
                     fig.add_trace(go.Scatter(
                         x=data['Datetime'],
                         y=data['Close'],
                         mode='lines',
-                        name='Price'
+                        name='Price',
+                        line=dict(color='#2962FF', width=1),
+                        showlegend=True
                     ))
 
-                # Add selected technical indicators
-                if 'Bollinger Bands' in indicators:
-                    fig.add_trace(go.Scatter(x=data['Datetime'], y=data['BB_Upper'], 
-                                           name='BB Upper', line=dict(dash='dash')))
-                    fig.add_trace(go.Scatter(x=data['Datetime'], y=data['BB_Lower'], 
-                                           name='BB Lower', line=dict(dash='dash')))
-                    fig.add_trace(go.Scatter(x=data['Datetime'], y=data['BB_Middle'], 
-                                           name='BB Middle', line=dict(dash='dot')))
-
+                # Add selected technical indicators with specific colors
                 if 'SMA 20' in indicators:
-                    fig.add_trace(go.Scatter(x=data['Datetime'], y=data['SMA_20'], 
-                                           name='SMA 20'))
+                    fig.add_trace(go.Scatter(
+                        x=data['Datetime'], 
+                        y=data['SMA_20'],
+                        name='SMA 20',
+                        line=dict(color='#FFA500', width=1.5),  # Updated color for better distinction
+                        showlegend=True
+                    ))
                 if 'EMA 20' in indicators:
-                    fig.add_trace(go.Scatter(x=data['Datetime'], y=data['EMA_20'], 
-                                           name='EMA 20'))
+                    fig.add_trace(go.Scatter(
+                        x=data['Datetime'], 
+                        y=data['EMA_20'],
+                        name='EMA 20',
+                        line=dict(color='#FF6D00', width=1.5),
+                        showlegend=True
+                    ))
 
+                # Update layout with improved visibility settings
                 fig.update_layout(
                     title=f'{ticker} {time_period.upper()} Chart',
                     xaxis_title='Time',
                     yaxis_title='Price (USD)',
-                    height=600
+                    height=600,
+                    template='plotly_dark',
+                    plot_bgcolor='black',           # Set black background
+                    paper_bgcolor='black',
+                    showlegend=True,
+                    legend=dict(
+                        yanchor="top",
+                        y=0.99,
+                        xanchor="right",
+                        x=0.99,
+                        bgcolor="rgba(0,0,0,0.5)",
+                        font=dict(color="white")
+                    ),
+                    xaxis=dict(
+                        gridcolor='rgba(128,128,128,0.2)',
+                        showgrid=True,
+                        linecolor='rgba(128,128,128,0.2)',
+                        rangeslider=dict(visible=True)
+                    ),
+                    yaxis=dict(
+                        gridcolor='rgba(128,128,128,0.2)',
+                        showgrid=True,
+                        linecolor='rgba(128,128,128,0.2)',
+                        side='right'               # Move price axis to right side
+                    ),
+                    margin=dict(l=50, r=50, t=50, b=50),
+                    hoverdistance=100,            # Make hover more sensitive
+                    spikedistance=100,           
+                    hovermode='x unified'         # Show all hover info together
                 )
+
                 st.plotly_chart(fig, use_container_width=True)
+
 
             with tab2:
                 if 'RSI' in indicators:
@@ -220,4 +278,4 @@ for symbol in stock_symbols:
         st.sidebar.metric(f"{symbol}", f"{last_price:.2f} USD", f"{change:.2f} ({pct_change:.2f}%)")
 
 # Sidebar information
-st.sidebar.info("This dashboard provides: Real-time stock data, Technical indicators, Custom watchlist and Interactive charts")
+st.sidebar.info("This dashboard provides stock data and technical indicators for various time periods")
