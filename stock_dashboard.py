@@ -1,12 +1,9 @@
 import streamlit as st
-import plotly.express as px
 import plotly.graph_objects as go
-import pandas as pd 
 import yfinance as yf 
 from datetime import datetime, timedelta
-import pytz
 import ta
-import numpy as np
+
 
 def fetch_stock_data(ticker, period, interval):
     end_date = datetime.now()
@@ -27,17 +24,19 @@ def process_data(data):
 
 def calculate_metric(data):
     try:
-        # Convert all values to float to ensure proper calculation
-        last_close = float(data['Close'].iloc[-1])
-        prev_close = float(data['Close'].iloc[0])
+        # Use .item() to properly convert pandas Series to native Python numbers
+        last_close = data['Close'].iloc[-1].item()
+        prev_close = data['Close'].iloc[0].item()
         change = last_close - prev_close
         pct_change = (change / prev_close) * 100
-        high = float(data['High'].max())
-        low = float(data['Low'].min())
-        volume = float(data['Volume'].sum())
-        avg_volume = float(data['Volume'].mean())
         
-        # Return all values as native Python numbers, not Pandas/Numpy types
+        # Use .item() for aggregation results
+        high = data['High'].max().item()
+        low = data['Low'].min().item()
+        volume = data['Volume'].sum().item()
+        avg_volume = data['Volume'].mean().item()
+        
+        # Return values (already native Python numbers)
         return last_close, change, pct_change, high, low, volume, avg_volume
     except Exception as e:
         st.error(f"Error in calculate_metric: {str(e)}")
@@ -70,15 +69,46 @@ def add_technical_indicators(data):
     return data
 
 def plot_volume_chart(data):
-    volume_fig = go.Figure()
-    volume_fig.add_trace(go.Bar(x=data['Datetime'], y=data['Volume'], name='Volume'))
-    volume_fig.update_layout(
-        title='Trading Volume',
-        xaxis_title='Time',
-        yaxis_title='Volume',
-        height=300
-    )
-    return volume_fig
+    try:
+        # Ensure 'Datetime' is in the correct format
+        if 'Datetime' not in data.columns:
+            st.error("Error: 'Datetime' column is missing in data.")
+            return None
+        
+        # Create the volume bar chart
+        volume_fig = go.Figure()
+        volume_fig.add_trace(go.Bar(
+            x=data['Datetime'], 
+            y=data['Volume'], 
+            name='Volume',
+            marker_color='blue'  # Color customization
+        ))
+        
+        # Update layout for better appearance
+        volume_fig.update_layout(
+            title=dict(
+                text='Trading Volume',
+                x=0.5,  # Center-align title
+                font=dict(size=16)
+            ),
+            xaxis_title='Time',
+            yaxis_title='Volume',
+            height=400,  # Slightly increase height for better visibility
+            margin=dict(l=50, r=50, t=50, b=50),
+            template='plotly_dark',  # Add a consistent theme
+            xaxis=dict(
+                showgrid=True, 
+                gridcolor='rgba(128,128,128,0.2)'  # Subtle gridlines
+            ),
+            yaxis=dict(
+                showgrid=True, 
+                gridcolor='rgba(128,128,128,0.2)'  # Subtle gridlines
+            )
+        )
+        return volume_fig
+    except Exception as e:
+        st.error(f"Error in plot_volume_chart: {str(e)}")
+        return None
 
 # Set up Streamlit page layout
 st.set_page_config(layout='wide')
@@ -131,7 +161,7 @@ if st.sidebar.button('Update'):
             )
 
             # Create tabs for different charts
-            tab1, tab2, tab3 = st.tabs(["Price Chart", "Technical Analysis", "Volume"])
+            tab1, tab2= st.tabs(["Price Chart", "Technical Analysis"])
             
             with tab1:
                 # Main price chart
@@ -146,7 +176,7 @@ if st.sidebar.button('Update'):
                         name='Price',
                         increasing_line_color='#26A69A',    # Green color for increasing
                         decreasing_line_color='#EF5350',    # Red color for decreasing
-                        line=dict(width=1)                  # Make candlesticks more visible
+                        line=dict(width=1)                  # Adjust candlestick visibility
                     ))
                 elif chart_type == 'Line':
                     fig.add_trace(go.Scatter(
@@ -164,7 +194,7 @@ if st.sidebar.button('Update'):
                         x=data['Datetime'], 
                         y=data['SMA_20'],
                         name='SMA 20',
-                        line=dict(color='#FFA500', width=1.5),  # Updated color for better distinction
+                        line=dict(color='#ADA930', width=1.5),  # Updated color for better distinction
                         showlegend=True
                     ))
                 if 'EMA 20' in indicators:
@@ -173,6 +203,27 @@ if st.sidebar.button('Update'):
                         y=data['EMA_20'],
                         name='EMA 20',
                         line=dict(color='#FF6D00', width=1.5),
+                        showlegend=True
+                    ))
+                if 'Bollinger Bands' in indicators:
+                    fig.add_trace(go.Scatter(
+                        x=data['Datetime'],
+                        y=data['BB_Upper'],
+                        name='BB Upper',
+                        line=dict(color='#FF5733', width=1.5),
+                        showlegend=True
+                    ))
+                    fig.add_trace(go.Scatter(
+                        x=data['Datetime'],
+                        y=data['BB_Lower'],
+                        name='BB_Lower',
+                        line=dict(color='#33CFFF', width=1.5),
+                    ))
+                    fig.add_trace(go.Scatter(
+                        x=data['Datetime'],
+                        y=data['BB_Middle'],
+                        name='BB_Middle',
+                        line=dict(color='#FFC300', width=1.5),
                         showlegend=True
                     ))
 
@@ -198,7 +249,7 @@ if st.sidebar.button('Update'):
                         gridcolor='rgba(128,128,128,0.2)',
                         showgrid=True,
                         linecolor='rgba(128,128,128,0.2)',
-                        rangeslider=dict(visible=True)
+                        rangeslider=dict(visible=True)  # Add range slider for candlestick
                     ),
                     yaxis=dict(
                         gridcolor='rgba(128,128,128,0.2)',
@@ -213,6 +264,7 @@ if st.sidebar.button('Update'):
                 )
 
                 st.plotly_chart(fig, use_container_width=True)
+
 
 
             with tab2:
@@ -242,24 +294,6 @@ if st.sidebar.button('Update'):
                     )
                     st.plotly_chart(macd_fig, use_container_width=True)
 
-            with tab3:
-                st.plotly_chart(plot_volume_chart(data), use_container_width=True)
-
-            # Display data tables with toggles
-            if st.checkbox('Show Historical Data'):
-                st.dataframe(data[['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume']])
-
-            if st.checkbox('Show Technical Indicators'):
-                technical_cols = ['Datetime']
-                if 'SMA 20' in indicators: technical_cols.append('SMA_20')
-                if 'EMA 20' in indicators: technical_cols.append('EMA_20')
-                if 'RSI' in indicators: technical_cols.append('RSI')
-                if 'MACD' in indicators: 
-                    technical_cols.extend(['MACD', 'MACD_Signal'])
-                if 'Bollinger Bands' in indicators:
-                    technical_cols.extend(['BB_Upper', 'BB_Middle', 'BB_Lower'])
-                
-                st.dataframe(data[technical_cols])
 
     except Exception as e:
         st.error(f"Error occurred: {str(e)}")
