@@ -118,7 +118,7 @@ st.title("Stock Dashboard")
 st.sidebar.header('Chart Parameters')
 ticker = st.sidebar.text_input('Ticker', 'ADBE')
 time_period = st.sidebar.selectbox('Time Period', ['1d', '1wk', '1mo', '1y', 'max'])
-chart_type = st.sidebar.selectbox('Chart Type', ['Candlestick', 'Line'])
+chart_type = st.sidebar.selectbox('Chart Type', ['Candlestick'])
 indicators = st.sidebar.multiselect('Technical Indicators', 
     ['SMA 20', 'EMA 20', 'Bollinger Bands', 'RSI', 'MACD'])
 
@@ -176,17 +176,9 @@ if st.sidebar.button('Update'):
                         name='Price',
                         increasing_line_color='#26A69A',    # Green color for increasing
                         decreasing_line_color='#EF5350',    # Red color for decreasing
-                        line=dict(width=1)                  # Adjust candlestick visibility
+                        line=dict(width=3)                  # Adjust candlestick visibility
                     ))
-                elif chart_type == 'Line':
-                    fig.add_trace(go.Scatter(
-                        x=data['Datetime'],
-                        y=data['Close'],
-                        mode='lines',
-                        name='Price',
-                        line=dict(color='#2962FF', width=1),
-                        showlegend=True
-                    ))
+
 
                 # Add selected technical indicators with specific colors
                 if 'SMA 20' in indicators:
